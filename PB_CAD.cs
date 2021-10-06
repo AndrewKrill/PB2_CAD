@@ -24,17 +24,18 @@ namespace PB_CAD
     {
         public new const string
             PluginGuid = "PolyTech.PB_CAD",
-            PluginName = "Part Halver",
-            PluginVersion = "1.1.0";
+            PluginName = "PB CAD",
+            PluginVersion = "0.1.0";
 
         public static PB_CAD instance;
         public static ConfigEntry<bool> modEnabled;
         public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> splitKey;
         public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> menuKey;		
+        public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> joinKey;
+        public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> muscleKey;		
+        public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> intersectKey;
+
         Harmony harmony;
-		
-		// Added by Piecat, for splitting controlled by in-game UI
-		private bool splitRequested = false;
 		
 		internal Rect WindowRect { get; private set; }
         internal int LeftColumnWidth { get; private set; }
@@ -56,6 +57,7 @@ namespace PB_CAD
             syncLayoutKeybind;
 
 		
+		//GUI Things
 		private void OnGUI(){
 			if (DisplayingWindow)
 			{
@@ -126,7 +128,7 @@ namespace PB_CAD
 
 					if (GUILayout.Button("Apply Split")){
 						InterfaceAudio.Play("ui_menu_select");
-						splitRequested = true;
+						RequestsToApply.splitRequested = true;
 					}				
 
 
@@ -138,7 +140,6 @@ namespace PB_CAD
                 instance.Logger.LogError(ex.Message);
             }
         }
-
         
         public static void EatInputInRect(Rect eatRect)
         {
@@ -161,10 +162,16 @@ namespace PB_CAD
             }
         }
 
-
         public static class GUIValues {
 			public static string numParts = "2";
         }
+		
+		public static class RequestsToApply {
+			public static bool splitRequested = false;
+			public static bool intersectRequested = false;
+			public static bool combineRequested = false;
+			public static bool muscleReplaceRequested = false;
+		}
 		
         void Awake()
         {
@@ -174,8 +181,13 @@ namespace PB_CAD
             // Set this true if your mod effects physics or allows mods that you can't normally do.
             isCheat = false;
 
-            modEnabled = Config.Bind("Part Halver", "modEnabled", true, "Enable Mod");
-            menuKey = Config.Bind("Part Halver", "Menu Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.M), "Menu");
+            modEnabled = Config.Bind("PB CAD", "modEnabled", true, "Enable Mod");
+            menuKey = Config.Bind("PB CAD", "Menu Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.M), "Menu");
+			splitKey = Config.Bind("PB CAD", "Split Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.M), "Split Keybind");
+			joinKey = Config.Bind("PB CAD", "Join Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.J), "Join Keybind");
+			muscleKey = Config.Bind("PB CAD", "Muscle Replace Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.Q), "Muscle Replace Keybind");
+			intersectKey = Config.Bind("PB CAD", "Join Intersect Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.I), "Join Intersect Keybind");
+			
             modEnabled.SettingChanged += onEnableDisable;
             
             this.isEnabled = modEnabled.Value;
@@ -188,12 +200,17 @@ namespace PB_CAD
             PolyTechMain.registerMod(this);
         }
 
+        public static void RaiseInputError(string error){
+            //GUIValues.ConnectionResponse = $"<color=red>Incorrect Input: {error}</color>";
+			//TODO
+        }
+
+
+		//Mod Content
+
         public void Start()
         {
-            // do something idk
             typeof(BridgeSelectionSet).Assembly.GetType("BridgeActions");
-
-
         }
 
         public void onEnableDisable(object sender, EventArgs e)
@@ -218,13 +235,6 @@ namespace PB_CAD
             modEnabled.Value = false;
         }
 
-
-        public static void RaiseInputError(string error){
-            //GUIValues.ConnectionResponse = $"<color=red>Incorrect Input: {error}</color>";
-			//TODO
-        }
-
-
         public bool shouldRun()
         {
             return PolyTechMain.ptfInstance.isEnabled && this.isEnabled;
@@ -232,52 +242,190 @@ namespace PB_CAD
 
         void Update()
         {
-			if(shouldRun() && menuKey.Value.IsUp())
-			{
-				DisplayingWindow = !DisplayingWindow;
-			}
-			
-            if (shouldRun() && splitRequested == true)
-            {				
-
-				int numParts;
-				try {
-					numParts = int.Parse(GUIValues.numParts);
-				}
-				catch {
-					RaiseInputError("Number of Parts must be int");
-					return;
+			if(shouldRun()) {
+				
+				//Key Binds
+				if(menuKey.Value.IsUp())
+				{
+					DisplayingWindow = !DisplayingWindow;
 				}
 
-                // begin undo/redo frame
-                PublicBridgeActions.StartRecording();
-                
-                // do split on every selected edge
-                var edges = new HashSet<BridgeEdge>(BridgeSelectionSet.m_Edges);
-                
-                // do split
-                foreach (var edge in edges)
+                if(intersectKey.Value.IsUp())
                 {
-                    if (edge.isActiveAndEnabled)
-                    {
-                        splitEdge(edge, numParts);
-
-                        edge.ForceDisable();
-	            	    edge.SetStressColor(0f);
-
-                        PublicBridgeActions.Delete(edge);
-                    }
+                    RequestsToApply.intersectRequested = true;
                 }
+				
+				//Part Splitter
+				if(RequestsToApply.splitRequested == true)
+				{				
 
-	            BridgeEdges.UpdateManual();
-                
-                // end undo/redo frame
-                PublicBridgeActions.FlushRecording();
-            }
-			splitRequested = false;
+					int numParts;
+					try {
+						numParts = int.Parse(GUIValues.numParts);
+					}
+					catch {
+						RaiseInputError("Number of Parts must be int");
+						return;
+					}
+
+					// begin undo/redo frame
+					PublicBridgeActions.StartRecording();
+					
+					// do split on every selected edge
+					var edges = new HashSet<BridgeEdge>(BridgeSelectionSet.m_Edges);
+					
+					// do split
+					foreach (var edge in edges)
+					{
+						if (edge.isActiveAndEnabled)
+						{
+							splitEdge(edge, numParts);
+
+							edge.ForceDisable();
+							edge.SetStressColor(0f);
+
+							PublicBridgeActions.Delete(edge);
+						}
+					}
+
+					BridgeEdges.UpdateManual();
+					
+					// end undo/redo frame
+					PublicBridgeActions.FlushRecording();
+					RequestsToApply.splitRequested = false;
+				}
+				
+				if(RequestsToApply.intersectRequested == true) 
+				{
+				
+					// begin undo/redo frame
+					PublicBridgeActions.StartRecording();
+					
+                    //Run the intersect method on all selected items
+                    intersectRecursive();
+
+					BridgeEdges.UpdateManual();
+					
+					// end undo/redo frame
+					PublicBridgeActions.FlushRecording();				
+				}
+
+				RequestsToApply.splitRequested = false;
+                RequestsToApply.intersectRequested = false;
+
+			}
 
 			
         }
+		
+		bool intersectHelperCCW(Vector3 A, Vector3 B, Vector3 C) {
+            //Returns if ordered points are counter clockwise. Used for checking intersection
+			return (C.y-A.y)*(B.x-A.x) > (B.y-A.y)*(C.x-A.x);
+		}
+
+        bool intersectHelperChecker(Vector3 A, Vector3 B, Vector3 C, Vector3 D) {
+            //Checks if lines are intersecting and do NOT share a joint already
+
+            //Check if any end-points are shared
+            if(A.Equals(B) || A.Equals(C) || A.Equals(D) || B.Equals(C) || B.Equals(D) || C.Equals(D)) {
+                return false;
+            }
+
+            //Check if they are intersecting
+            return intersectHelperCCW(A,C,D) != intersectHelperCCW(B,C,D) && intersectHelperCCW(A,B,C) != intersectHelperCCW(A,B,D);
+        }
+
+        Vector3 intersectHelperFindPoint(Vector3 A, Vector3 B, Vector3 C, Vector3 D) {
+            //Returns Intersection Point (X,Y)
+
+            float a1 = B.y - A.y;
+            float b1 = A.x - B.x;
+            float c1 = a1 * A.x + b1 * A.y;
+    
+            float a2 = D.y - C.y;
+            float b2 = C.x - D.x;
+            float c2 = a2 * C.x + b2 * C.y;
+
+            float delta = a1 * b2 - a2 * b1;
+
+            Vector3 pos = new Vector3((b2 * c1 - b1 * c2) / delta, (a1 * c2 - a2 * c1) / delta, 0f);
+
+            return pos;
+        }
+
+        bool intersectRecursive() {
+            //This method is recursive. We must re-load the edges and re-check them all after each intersection operation.
+
+            //Get selected edges
+            var edgesA = new HashSet<BridgeEdge>(BridgeSelectionSet.m_Edges);
+            var edgesB = new HashSet<BridgeEdge>(BridgeSelectionSet.m_Edges);
+
+            //Check all edges against each other
+            foreach (var edgeA in edgesA)
+			    {
+                foreach (var edgeB in edgesB)
+	    		    {
+                        //Check if edges are distinct
+		    			if(edgeA != edgeB) {
+                            //Check if lines are even intersecting
+                            if(intersectHelperChecker(edgeA.m_JointA.m_BuildPos, edgeA.m_JointB.m_BuildPos, edgeB.m_JointA.m_BuildPos, edgeB.m_JointB.m_BuildPos)) {
+                                //We have distinct edges that are intersecting. Now we can call the intersect method which does the split operation
+                                intersectMain(edgeA, edgeB);
+                                return intersectRecursive();
+                            }
+                        }
+                    }
+                //All edges in A have been checked. For efficiency, remove this from the set being checked in B.
+                edgesB.Remove(edgeA);
+                }
+
+            return true;
+        }
+
+
+        void intersectMain(BridgeEdge edgeA, BridgeEdge edgeB) {
+            //Create and delete elements to do the intersection
+
+
+            //Find intersection point and put a joint there
+            Vector3 pos = intersectHelperFindPoint(edgeA.m_JointA.m_BuildPos, edgeA.m_JointB.m_BuildPos, edgeB.m_JointA.m_BuildPos, edgeB.m_JointB.m_BuildPos);
+
+            var newJoint = BridgeJoints.CreateJoint(pos, Guid.NewGuid().ToString());
+            PublicBridgeActions.Create(newJoint);
+
+            // make edges for first line, edge A
+            var newEdgeA = BridgeEdges.CreateEdgeWithPistonOrSpring(edgeA.m_JointA, newJoint, edgeA.m_Material.m_MaterialType);
+            PublicBridgeActions.Create(newEdgeA);
+            BridgeSelectionSet.SelectEdge(newEdgeA);
+
+            var newEdgeB = BridgeEdges.CreateEdgeWithPistonOrSpring(edgeA.m_JointB, newJoint, edgeA.m_Material.m_MaterialType);
+            PublicBridgeActions.Create(newEdgeB);
+            BridgeSelectionSet.SelectEdge(newEdgeB);
+
+            // make edges for first line, edge B
+            var newEdgeC = BridgeEdges.CreateEdgeWithPistonOrSpring(edgeB.m_JointA, newJoint, edgeB.m_Material.m_MaterialType);
+            PublicBridgeActions.Create(newEdgeC);
+            BridgeSelectionSet.SelectEdge(newEdgeC);
+
+            var newEdgeD = BridgeEdges.CreateEdgeWithPistonOrSpring(edgeB.m_JointB, newJoint, edgeB.m_Material.m_MaterialType);
+            PublicBridgeActions.Create(newEdgeD);
+            BridgeSelectionSet.SelectEdge(newEdgeD);
+
+            //Delete the edges we're replacing
+            //We MUST de-select the edge, or we will be stuck in a recursive loop. The wrong number of elements will be created too.
+			edgeA.ForceDisable();
+			edgeA.SetStressColor(0f);
+			PublicBridgeActions.Delete(edgeA);
+            BridgeSelectionSet.DeSelectEdge(edgeA);
+
+			edgeB.ForceDisable();
+			edgeB.SetStressColor(0f);
+			PublicBridgeActions.Delete(edgeB);
+            BridgeSelectionSet.DeSelectEdge(edgeB);
+            
+            return;
+        }
+		
 
         void splitEdge(BridgeEdge edge, int numParts)
         {
@@ -317,11 +465,11 @@ namespace PB_CAD
             // create the 2 new edges
             var edge1 = BridgeEdges.CreateEdgeWithPistonOrSpring(edge.m_JointA, newJoint, edge.m_Material.m_MaterialType);
             PublicBridgeActions.Create(edge1);
-            BridgeSelectionSet.SelectEdge(edge1);
+            BridgeSelectionSet.DeSelectEdge(edge1);
             
             var edge2 = BridgeEdges.CreateEdgeWithPistonOrSpring(edge.m_JointB, newJoint, edge.m_Material.m_MaterialType);
             PublicBridgeActions.Create(edge2);
-            BridgeSelectionSet.SelectEdge(edge2);
+            BridgeSelectionSet.DeSelectEdge(edge2);
         }
 
 
