@@ -31,7 +31,7 @@ namespace PB_CAD
         public static ConfigEntry<bool> modEnabled;
         public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> splitKey;
         public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> menuKey;		
-        public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> joinKey;
+        public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> combineKey;
         public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> muscleKey;		
         public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> intersectKey;
 
@@ -183,10 +183,10 @@ namespace PB_CAD
 
             modEnabled = Config.Bind("PB CAD", "modEnabled", true, "Enable Mod");
             menuKey = Config.Bind("PB CAD", "Menu Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.M), "Menu");
-			splitKey = Config.Bind("PB CAD", "Split Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.M), "Split Keybind");
-			joinKey = Config.Bind("PB CAD", "Join Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.J), "Join Keybind");
+			splitKey = Config.Bind("PB CAD", "Split Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.N), "Split Keybind");
+			combineKey = Config.Bind("PB CAD", "Combine Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.J), "Combine Keybind");
 			muscleKey = Config.Bind("PB CAD", "Muscle Replace Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.Q), "Muscle Replace Keybind");
-			intersectKey = Config.Bind("PB CAD", "Join Intersect Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.I), "Join Intersect Keybind");
+			intersectKey = Config.Bind("PB CAD", "Intersect Keybind", new BepInEx.Configuration.KeyboardShortcut(KeyCode.I), "Intersect Keybind");
 			
             modEnabled.SettingChanged += onEnableDisable;
             
@@ -254,7 +254,18 @@ namespace PB_CAD
                 {
                     RequestsToApply.intersectRequested = true;
                 }
-				
+
+                if(muscleKey.Value.IsUp()) 
+                {
+                    RequestsToApply.muscleReplaceRequested = true;
+                }
+
+                if(combineKey.Value.IsUp()) 
+                {
+                    RequestsToApply.combineRequested = true;
+                }
+
+
 				//Part Splitter
 				if(RequestsToApply.splitRequested == true)
 				{				
@@ -310,8 +321,23 @@ namespace PB_CAD
 					PublicBridgeActions.FlushRecording();				
 				}
 
+                if(RequestsToApply.combineRequested == true) {
+                    //TODO
+
+                    //Check if segments are colinear
+                    //Combine edges into one
+                    //Do we want to check if the length is too long?
+                }
+
+                if(RequestsToApply.muscleReplaceRequested == true) {
+                    //TODO
+                    //Replaces segment(s) with "muscle", or creates if only 2 joints are selected
+                }
+
 				RequestsToApply.splitRequested = false;
                 RequestsToApply.intersectRequested = false;
+				RequestsToApply.combineRequested = false;
+                RequestsToApply.muscleReplaceRequested = false;
 
 			}
 
