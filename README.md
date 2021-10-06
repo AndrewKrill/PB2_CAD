@@ -1,2 +1,2 @@
-# PB_CAD
- CAD style tools for PolyBridge
+# PB2_CAD
+ CAD style tools for PolyBridge 2
