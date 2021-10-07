@@ -195,7 +195,7 @@ namespace PB_CAD
             harmony = new Harmony("PolyTech.PB_CAD");
             harmony.PatchAll(Assembly.GetExecutingAssembly());
 
-            this.authors = new string[] { "Conqu3red" };
+            this.authors = new string[] { "Piecat" };
 
             PolyTechMain.registerMod(this);
         }
